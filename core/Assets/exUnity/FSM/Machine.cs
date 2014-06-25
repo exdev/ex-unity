@@ -185,8 +185,9 @@ namespace fsm {
                 ShowDebugInfo ( 0, true, _textStyle );
             }
         }
-    }
 
 #endif
+    }
+
 
 }
