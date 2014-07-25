@@ -45,9 +45,6 @@ public class AnimTransition : TimerTransition {
         onDoCheck = _onCheck;
         return this;
     }
-    public void whenDefault () {
-        onDoCheck = delegate () { return true; };
-    }
 
     /// <summary> 限制只有动画播放到了一定的时候才能跳转，和when是与(and)的布尔关系。 </summary>
     /// <param name="_normalizedTime">
@@ -130,7 +127,7 @@ public class AnimTransition : TimerTransition {
         if (onDoCheck != null) {
             return onDoCheck();
         }
-        return false;
+        return true;
     }
 
     bool OnCheck () {
