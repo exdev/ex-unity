@@ -44,7 +44,9 @@ namespace fsm {
         // route state will check condition and transfer to 
         // the next state immediately before transition.onStart
         // it will then reset the initState of its parent.
-        public bool isRoute = false; 
+        public bool isRoute = false;
+        // if hasRouteOut, state can not exit unless its child RouteOutState can be activated
+        public bool hasChildRouteOut = false;
 
         protected State parent_ = null;
         public State parent {
@@ -189,7 +191,65 @@ namespace fsm {
                 //     Debug.Log( "FSM Debug: On Action - " + currentStates[i].name + " at " + Time.time );
                 // } DISABLE end 
             }
-        } 
+        }
+
+        // ------------------------------------------------------------------ 
+        // Desc: 
+        // ------------------------------------------------------------------ 
+
+        private Transition SelectTransition () {
+            for (int i = 0; i < transitionList.Count; ++i) {
+                Transition transition = transitionList[i];
+                if (transition.onCheck()) {
+                    if (transition.target is RouteOutState) {
+                        // check parent's transtion
+                        var parentTransition = parent.SelectTransition(); // TODO: cache result
+                        if (parentTransition != null) {
+                            return transition;
+                        }
+                    }
+                    else {
+                        return transition;
+                    }
+                }
+            }
+            return null;
+        }
+
+        // ------------------------------------------------------------------ 
+        // Transition to another child state
+        // ------------------------------------------------------------------ 
+
+        private void Transition (State sourceSubState, Transition transition) {
+            exDebug.Assert(sourceSubState.parent == this);
+            // NOTE: if parent transition triggerred, the child should always execute onExit transition
+            // exit states
+            ExitStates(transition.target, sourceSubState);
+            // route out
+            if (transition.target is RouteOutState) {
+                var parentTransition = SelectTransition();
+                exDebug.Assert(parentTransition != null);
+                parentTransition.Bridge(transition);
+                parent.Transition(this, parentTransition);
+                // if routing out, this state will be exit immediately by calling parent.Transition(),
+                // so we dont need to mark its transition here.
+            }
+            else {
+                // update state
+                currentTransition = transition;
+                inTransition = true;
+            }
+            // route in
+            if (transition.target.mode == Mode.Exclusive &&
+                transition.target.children.Count > 0) {
+                State firstChild = transition.target.children[0];
+                if (firstChild.isRoute) {
+                    firstChild.CheckRoute(transition);
+                }
+            }
+            // transition on start
+            if (transition.onStart != null) transition.onStart();
+        }
 
         // ------------------------------------------------------------------ 
         // Desc: 
@@ -203,38 +263,19 @@ namespace fsm {
             //
             for ( int i = 0; i < currentStates.Count; ++i ) {
                 State activeChild = currentStates[i];
-
-                // NOTE: if parent transition triggerred, the child should always execute onExit transition
-                for ( int j = 0; j < activeChild.transitionList.Count; ++j ) {
-                    Transition transition = activeChild.transitionList[j];
-                    if ( transition.onCheck() ) {
-
-                        // exit states
-                        transition.source.parent.ExitStates ( transition.target, transition.source );   // TODO: 这里应该不进行++i
-
-                        // route happends here
-                        if ( transition.target.mode == Mode.Exclusive &&
-                             transition.target.children.Count > 0 ) 
-                        {
-                            State firstChild = transition.target.children[0];
-                            if ( firstChild.isRoute ) {
-                                firstChild.CheckRoute(transition);
-                            }
-                        }
-
-                        // transition on start
-                        if ( transition.onStart != null ) transition.onStart();
-                        
-                        // set current transition
-                        currentTransition = transition;
-                        inTransition = true;
-
-                        break;
-                    }
-                }
-
-                if ( inTransition == false ) {
+                if (activeChild.hasChildRouteOut) {
+                    // we dont need to check here because child states will check their parents route out transitions themselves
                     activeChild.CheckConditions ();
+                }
+                else {
+                    var nextTransition = activeChild.SelectTransition();
+                    if (nextTransition != null) {
+                        // TODO: 这里应该不进行++i，因为currentStates已经改变
+                        Transition(activeChild, nextTransition);
+	                }
+                    else {
+                        activeChild.CheckConditions ();
+                    }
                 }
             }
         }
@@ -521,6 +562,18 @@ namespace fsm {
             //     stateMachine.Send ( Event.FINISHED );
             // }
             // } TODO end 
+        }
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // RouteOutState
+    ///////////////////////////////////////////////////////////////////////////////
+
+    public class RouteOutState : State {
+        public RouteOutState (string _name, State _parent = null)
+            : base (_name, _parent) {
+            exDebug.Assert(_parent != null);
+            _parent.hasChildRouteOut = true;
         }
     }
 }
