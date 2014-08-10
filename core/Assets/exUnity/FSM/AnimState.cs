@@ -18,7 +18,6 @@ namespace fsm {
 public class AnimTransition : TimerTransition {
 
     /// <summary> 触发动画跳转，不论when、after条件是否满足。 </summary>
-    //public bool trigger = false;  //TODO: pull up to Transition
     public bool syncNormalizedTime = false;
     public float scale = 1.0f;  // scale duration
 
@@ -92,14 +91,9 @@ public class AnimTransition : TimerTransition {
 
             bool found = (System.Array.IndexOf(fromNameList, source.name) != -1);
             if (found == false) {
-                return false;   // TODO: what if triggered ?
+                return false;
             }
         }
-
-        ////
-        //if (trigger) {
-        //    return true;
-        //}
 
         //
         if ( exitTime.HasValue ) {
@@ -128,7 +122,9 @@ public class AnimTransition : TimerTransition {
         if (onDoCheck != null) {
             return onDoCheck();
         }
-        return true;
+
+        bool defaultTrue = target != null && target.parent.hasRouteIn;
+        return defaultTrue;
     }
 
     bool OnCheck () {

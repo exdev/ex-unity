@@ -44,6 +44,11 @@ namespace fsm {
         // group state will check conditions and transfer to 
         // other sub state instead of initState.
         public List<Transition> routeInTransitions = null;
+        public bool hasRouteIn {
+            get {
+                return routeInTransitions != null && routeInTransitions.Count > 0;
+            }
+        }
         // if hasRouteOut, state can not exit unless its child RouteOutState can be activated
         public bool containRouteOut = false;
         // once its sub transition checked its sub route out state, isEnd become true
@@ -123,6 +128,8 @@ namespace fsm {
         protected Transition currentTransition = null;
         protected List<State> currentStates = new List<State>();
 
+        public bool trigger = false;
+
         ///////////////////////////////////////////////////////////////////////////////
         // event handles
         ///////////////////////////////////////////////////////////////////////////////
@@ -201,7 +208,7 @@ namespace fsm {
         private Transition SelectTransition () {
             for (int i = 0; i < transitionList.Count; ++i) {
                 Transition transition = transitionList[i];
-                if (transition.onCheck()) {
+                if (transition.onCheck() || (transition.target != null && transition.target.trigger)) {
                     if (transition.target is RouteOutState) {
                         parent.isEnd = true;
                         // check parent's transtion
@@ -246,6 +253,8 @@ namespace fsm {
             }
             // transition on start
             if (transition.onStart != null) transition.onStart();
+            // reset trigger
+            transition.target.trigger = false;
         }
 
         // ------------------------------------------------------------------ 
@@ -292,7 +301,8 @@ namespace fsm {
                     Transition transition = routeInTransitions[i];
                     transition.Bridge(_parentTransition);
 
-                    if ( transition.onCheck() ) {
+                    if ( transition.onCheck() || (transition.target != null && transition.target.trigger) ) {
+                        transition.target.trigger = false;
                         initState = transition.target;
                         hasTransition = true;
                         break;
