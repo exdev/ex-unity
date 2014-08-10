@@ -17,6 +17,11 @@ namespace fsm {
 /// </summary>
 public class AnimTransition : TimerTransition {
 
+    // We assume that the playing states should not keep the reference of any transition,
+    // so we just create a global shared dummy transition for routing.
+    // Otherwise we should pass an unique transition everytime we route it
+    private static AnimTransition routingTransition = new AnimTransition();
+
     /// <summary> 触发动画跳转，不论when、after条件是否满足。 </summary>
     public bool syncNormalizedTime = false;
     public float scale = 1.0f;  // scale duration
@@ -86,10 +91,14 @@ public class AnimTransition : TimerTransition {
     public bool TestOwnConditions () {
         //
         if ( fromNameList != null ) {
-            if ( source == null )
+            string soureName = null;
+            try {
+                soureName = target.parent.parent.currentTransition.source.name;
+            }
+            catch (System.NullReferenceException) {
                 return false;
-
-            bool found = (System.Array.IndexOf(fromNameList, source.name) != -1);
+            }
+            bool found = (System.Array.IndexOf(fromNameList, soureName) != -1);
             if (found == false) {
                 return false;
             }
@@ -135,6 +144,21 @@ public class AnimTransition : TimerTransition {
         bool result = TestOwnConditions();
         //trigger = false;
         return result;
+    }
+
+    public override void OnRouteFrom ( Transition _from ) {
+        exDebug.Assert(_from != null, "Previous transition should not be null!");
+        base.OnRouteFrom(_from);
+        TimerTransition timerTrans = _from as TimerTransition;
+        if ( timerTrans != null ) {
+            routingTransition.source = _from.source;
+            routingTransition.target = target;
+            routingTransition.duration = duration + timerTrans.duration;
+            AnimState animState = target as AnimState;
+            if ( animState != null ) {
+                animState.Play(routingTransition);
+            }
+        }
     }
 }
 
@@ -375,14 +399,17 @@ public class GroupAnimState : AnimState {
     }
 
     public override void Play (Transition _transition) {
+        // if routed, animation was played by transition
+        bool playRouteAnim = _transition != null && hasRouteIn;
         AnimState animState = initState as AnimState;
-        if ( animState != null ) {
+        if ( animState != null && playRouteAnim == false ) {
             animState.Play(_transition);
         }
     }
 
     /// <summary> 声明一个路由，用于选择进入Group后触发哪个子状态，用法请参考AnimState.to </summary>
     public AnimTransition routeIn (State _targetState, float _duration = 0.3f, bool _syncNTime = false) {
+        exDebug.Assert(_targetState.parent == this, "Can not route into other state");
         if (routeInTransitions == null) {
             routeInTransitions = new List<Transition>();
 	    }
