@@ -41,12 +41,13 @@ namespace fsm {
         public string name = "";
         public Mode mode = Mode.Exclusive;
 
-        // route state will check condition and transfer to 
-        // the next state immediately before transition.onStart
-        // it will then reset the initState of its parent.
-        public bool isRoute = false;
+        // group state will check conditions and transfer to 
+        // other sub state instead of initState.
+        public List<Transition> routeInTransitions = null;
         // if hasRouteOut, state can not exit unless its child RouteOutState can be activated
-        public bool hasChildRouteOut = false;
+        public bool containRouteOut = false;
+        // once its sub transition checked its sub route out state, isEnd become true
+        public bool isEnd = false;
 
         protected State parent_ = null;
         public State parent {
@@ -202,6 +203,7 @@ namespace fsm {
                 Transition transition = transitionList[i];
                 if (transition.onCheck()) {
                     if (transition.target is RouteOutState) {
+                        parent.isEnd = true;
                         // check parent's transtion
                         var parentTransition = parent.SelectTransition(); // TODO: cache result
                         if (parentTransition != null) {
@@ -229,7 +231,6 @@ namespace fsm {
             if (transition.target is RouteOutState) {
                 var parentTransition = SelectTransition();
                 exDebug.Assert(parentTransition != null);
-                parentTransition.Bridge(transition);
                 parent.Transition(this, parentTransition);
                 // if routing out, this state will be exit immediately by calling parent.Transition(),
                 // so we dont need to mark its transition here.
@@ -240,12 +241,8 @@ namespace fsm {
                 inTransition = true;
             }
             // route in
-            if (transition.target.mode == Mode.Exclusive &&
-                transition.target.children.Count > 0) {
-                State firstChild = transition.target.children[0];
-                if (firstChild.isRoute) {
-                    firstChild.CheckRoute(transition);
-                }
+            if (transition.target.mode == Mode.Exclusive) {
+                transition.target.CheckRoute(transition);
             }
             // transition on start
             if (transition.onStart != null) transition.onStart();
@@ -263,11 +260,13 @@ namespace fsm {
             //
             for ( int i = 0; i < currentStates.Count; ++i ) {
                 State activeChild = currentStates[i];
-                if (activeChild.hasChildRouteOut) {
-                    // we dont need to check here because child states will check their parents route out transitions themselves
+#if UN_INTERRUPTABLE
+                if (activeChild.containRouteOut) {
+                    // we dont need to check activeChild's transition here, because its child states will check its route out transitions
                     activeChild.CheckConditions ();
                 }
                 else {
+#endif
                     var nextTransition = activeChild.SelectTransition();
                     if (nextTransition != null) {
                         // TODO: 这里应该不进行++i，因为currentStates已经改变
@@ -276,7 +275,9 @@ namespace fsm {
                     else {
                         activeChild.CheckConditions ();
                     }
+#if UN_INTERRUPTABLE
                 }
+#endif
             }
         }
 
@@ -285,19 +286,21 @@ namespace fsm {
         // ------------------------------------------------------------------ 
 
         public void CheckRoute ( Transition _parentTransition ) {
-            bool hasTransition = false;
-            for ( int i = 0; i < transitionList.Count; ++i ) {
-                Transition transition = transitionList[i];
-                transition.Bridge(_parentTransition);
+            if (routeInTransitions != null) {
+                bool hasTransition = false;
+                for ( int i = 0; i < routeInTransitions.Count; ++i ) {
+                    Transition transition = routeInTransitions[i];
+                    transition.Bridge(_parentTransition);
 
-                if ( transition.onCheck() ) {
-                    parent.initState = transition.target;
-                    hasTransition = true;
-                    break;
+                    if ( transition.onCheck() ) {
+                        initState = transition.target;
+                        hasTransition = true;
+                        break;
+                    }
                 }
-            }
-            if ( hasTransition == false ) {
-                Debug.LogError( "FSM error: route state must have transition" );
+                if ( hasTransition == false ) {
+                    Debug.LogError( "FSM error: route state must have transition" );
+                }
             }
         }
 
@@ -343,8 +346,8 @@ namespace fsm {
         // ------------------------------------------------------------------ 
 
         public void EnterStates ( State _toEnter, State _toExit ) {
+            _toEnter.isEnd = false;
             currentStates.Add (_toEnter);
-
             if ( machine != null && machine.logDebugInfo ) 
                 Debug.Log( "FSM Debug: Enter State - " + _toEnter.name + " at " + Time.time );
 
@@ -505,7 +508,7 @@ namespace fsm {
                 _textStyle.fontStyle = FontStyle.Normal;
                 if ( _t != null ) {
                     if ( _t.source == this ) {
-                        suffix = " >>>";
+                        suffix = (_t.target != this) ? " >>>" : " <->";
                         _textStyle.normal.textColor = colorExit;
                     }
                     else if ( _t.target == this ) {
@@ -573,7 +576,7 @@ namespace fsm {
         public RouteOutState (string _name, State _parent = null)
             : base (_name, _parent) {
             exDebug.Assert(_parent != null);
-            _parent.hasChildRouteOut = true;
+            _parent.containRouteOut = true;
         }
     }
 }
