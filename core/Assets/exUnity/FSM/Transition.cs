@@ -44,12 +44,7 @@ namespace fsm {
         public System.Func<bool> onTransition = delegate () { return true; }; 
         public System.Action onEnd = null;
 
-        public virtual void Bridge ( Transition _parentTransition ) {
-            if ( _parentTransition == null )
-                source = null;
-            else
-                source = _parentTransition.source;
-        }
+        public virtual void OnRouteFrom ( Transition _from ) {}
     }
 
     ///////////////////////////////////////////////////////////////////////////////
@@ -78,14 +73,6 @@ namespace fsm {
                 }
                 return false;
             };
-        }
-
-        public override void Bridge ( Transition _parentTransition ) {
-            base.Bridge(_parentTransition);
-            TimerTransition timerTrans = _parentTransition as TimerTransition;
-            if ( timerTrans != null ) {
-                timerTrans.duration = duration;
-            }
         }
     }
 }
